@@ -142,58 +142,64 @@ def render_tutorial() -> None:
         "   - Uses Logistic Regression on previous game data"
     )
 
+def check_cached_analysis(username: str) -> bool:
+    """Check if all required files exist in the player's cache directory"""
+    required_files = [
+        "chess_dataset.csv",
+        "chess_dataset_adv.csv",
+        "result_as_wh.png",
+        "result_as_bl.png",
+        "fight.png",
+        "rating_ladder_red.png",
+        "time_class.png",
+        "overall_results.png",
+        "result_top_5_wh.png",
+        "result_top_5_bl.png",
+        "corr_heatmap.png"
+    ]
+    
+    player_dir = os.path.join('player_data', username)
+    if not os.path.exists(player_dir):
+        return False
+        
+    return all(os.path.exists(os.path.join(player_dir, file)) for file in required_files)
+
 def render_user_input_tab() -> None:
     """Render the user input tab content"""
     st.title("User Input")
     
     username = st.text_input(
-        "Enter your chess.com username:",
-        placeholder="username"
+        "Enter your Chess.com username:",
+        placeholder="your_username"
     )
     
-    if st.button("Request Analysis"):
+    if st.button("Analyze Games"):
         if username:
-            with st.spinner("Fetching Data, Please Wait..."):
-                try:
-                    # Create progress bar
-                    progress_text = "Operation in progress. Please wait."
-                    progress_bar = st.progress(0, text=progress_text)
-                    
-                    # Ensure directory exists
-                    os.makedirs(os.path.join('player_data', username), exist_ok=True)
-                    
+            # Check if cached analysis exists
+            if check_cached_analysis(username):
+                st.success("✅ Found cached analysis! Showing results from previous analysis.")
+                st.session_state.username = username
+                st.session_state.analysis_complete = True
+                st.rerun()
+            else:
+                with st.spinner("🔄 Analyzing chess games... This may take a few minutes."):
                     try:
-                        # Fetch and process data
-                        progress_bar.progress(25, text="Fetching games from Chess.com...")
                         gd.driver_fn(username)
-                        
-                        progress_bar.progress(50, text="Generating visualizations...")
                         viz.visualize_data(username)
-                        
-                        progress_bar.progress(100, text="Analysis complete!")
-                        
-                        # Update session state
+                        st.success("✅ Analysis complete! Switch to the Player Analysis tab to view results.")
                         st.session_state.username = username
                         st.session_state.analysis_complete = True
-                        
-                        # Check if key visualizations were created
-                        required_files = ["top_op_wh.png", "corr_heatmap.png"]
-                        missing_files = [f for f in required_files 
-                                       if not os.path.exists(os.path.join('player_data', username, f))]
-                        
-                        if missing_files:
-                            st.warning("Analysis complete but some visualizations could not be generated")
-                        else:
-                            st.success("Analysis Complete! Please proceed to the Player Analysis Tab.")
-                            
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"Error processing data: {str(e)}")
-                        st.info("Please make sure the username exists on chess.com and try again.")
-                        return
-                        
-                except Exception as e:
-                    st.error(f"Error during analysis: {str(e)}")
-                    st.info("Please check your internet connection and try again.")
+                        error_msg = str(e)
+                        if "User not found" in error_msg:
+                            st.error("❌ " + error_msg)
+                        elif "No games found" in error_msg:
+                            st.error("❌ " + error_msg)
+                        elif "Unable to connect" in error_msg:
+                            st.error("🌐 " + error_msg)
+                        else:
+                            st.error("❌ An error occurred during analysis: " + error_msg)
         else:
             st.warning("Please enter a username")
 
@@ -294,9 +300,9 @@ def render_analysis_content(username: str) -> None:
              "This pie chart shows the distribution of different time controls in your games."),
             ("overall_results.png", "Overall Results", 
              "This bar chart shows the distribution of all your game results."),
-            ("result_top_5_wh.png", "Top 5 White Openings Results", 
+            ("result_top_5_wh.png", "Results for Top 5 Openings as White", 
              "This chart shows your performance with your 5 most played openings as white."),
-            ("result_top_5_bl.png", "Top 5 Black Openings Results", 
+            ("result_top_5_bl.png", "Results for Top 5 Openings as Black", 
              "This chart shows your performance with your 5 most played openings as black."),
             ("corr_heatmap.png", "Correlation Heatmap", 
              "This heatmap shows correlations between different numerical aspects of your games.")
@@ -333,6 +339,12 @@ def render_prediction_tab() -> None:
     
     if st.button("Predict Game Outcome"):
         if user1 and user2:
+            # First check if the advanced dataset exists
+            adv_dataset_path = os.path.join('player_data', user1, 'chess_dataset_adv.csv')
+            if not os.path.exists(adv_dataset_path):
+                st.error("📊 Error processing chess data. Please try running the analysis from the User Input tab first.")
+                return
+                
             with st.spinner("Building Logistic Regression Classifier Model..."):
                 try:
                     results = pred.predict(user1, user2)
@@ -343,8 +355,6 @@ def render_prediction_tab() -> None:
                         st.error("⚠️ " + error_msg + "\nBoth players must have played blitz games on Chess.com to use this feature.")
                     elif "Error accessing Chess.com API" in error_msg:
                         st.error("🌐 Unable to access Chess.com API. Please check your internet connection and try again.")
-                    elif "Error generating chess dataset" in error_msg:
-                        st.error("📊 Error processing chess data. Please try running the analysis from the User Input tab first.")
                     else:
                         st.error("❌ " + error_msg)
         else:
@@ -357,12 +367,11 @@ def display_prediction_results(results: Dict[str, Any]) -> None:
         st.metric("Your Rating", results["user_rating"])
         st.metric("Rating Difference", results["rating_diff"])
     with col2:
-        st.metric("Opponent's Rating", results["opp_rating"])
+        st.metric("Opponent Rating", results["opp_rating"])
     
     with st.expander("View Model Details", expanded=False):
         st.code(results["summ1"], language="text")
         st.write(results["ord_acc"])
-        st.write(results["cat_acc"])
     
     st.success(results["result"])
 

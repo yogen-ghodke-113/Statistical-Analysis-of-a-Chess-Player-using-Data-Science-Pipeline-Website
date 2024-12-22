@@ -86,10 +86,10 @@ def save_plotly_figure(fig, filepath: str, scale: int = 3) -> None:
         
         # Configure kaleido for better performance
         pio.kaleido.scope.chromium_args = (
-            '--no-sandbox',
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--single-process'
+                    '--no-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--single-process'
         )
         
         # Save with minimal configuration
@@ -107,9 +107,9 @@ def save_plotly_figure(fig, filepath: str, scale: int = 3) -> None:
         logger.error(f"Could not save figure: {str(e)}")
         # Fallback to HTML
         try:
-            html_path = filepath.replace('.png', '.html')
-            fig.write_html(html_path)
-            logger.info(f"Saved as HTML fallback: {html_path}")
+                html_path = filepath.replace('.png', '.html')
+                fig.write_html(html_path)
+                logger.info(f"Saved as HTML fallback: {html_path}")
         except Exception as e2:
             logger.error(f"HTML fallback also failed: {str(e2)}")
 
@@ -179,10 +179,17 @@ def wh_countplot(df: pd.DataFrame, username: str) -> None:
             order=white_op_freq.index
         )
         
+        # Add frequency counts at the end of each bar
+        for i, v in enumerate(white_op_freq.values):
+            ax.text(v + 0.1, i, str(v), va='center', fontsize=12)
+        
         # Style the plot
         ax.set_ylabel("")
         ax.set_xlabel("Frequency", size=20, labelpad=30)
         ax.tick_params(labelsize=17)
+        
+        # Extend x-axis to make room for labels
+        plt.xlim(0, max(white_op_freq.values) * 1.1)
         
         # Save figure
         output_path = os.path.join('player_data', username, "top_op_wh.png")
@@ -213,10 +220,17 @@ def bl_countplot(df: pd.DataFrame, username: str) -> None:
             order=black_op_freq.index
         )
         
+        # Add frequency counts at the end of each bar
+        for i, v in enumerate(black_op_freq.values):
+            ax.text(v + 0.1, i, str(v), va='center', fontsize=12)
+        
         # Style the plot
         ax.set_ylabel("")
         ax.set_xlabel("Frequency", size=20, labelpad=30)
         ax.tick_params(labelsize=17)
+        
+        # Extend x-axis to make room for labels
+        plt.xlim(0, max(black_op_freq.values) * 1.1)
         
         # Save figure
         output_path = os.path.join('player_data', username, "top_op_bl.png")
@@ -465,135 +479,167 @@ def create_color_results(df: pd.DataFrame, username: str) -> None:
         raise
 
 def create_top_5_openings(df: pd.DataFrame, username: str) -> None:
-    """Create top 5 openings analysis for both colors"""
+    """Create top 5 most successful and least successful openings analysis for both colors"""
     try:
         logger.info("Creating top 5 openings analysis...")
+        
+        # Ensure output directory exists
+        output_dir = os.path.join('player_data', username)
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Created output directory: {output_dir}")
         
         def wrap_labels(text, width=30):
             """Wrap text at specified width"""
             import textwrap
             return textwrap.fill(text, width=width)
         
+        def calculate_opening_stats(color_df):
+            """Calculate stats for openings using points-based system"""
+            opening_stats = []
+            logger.info(f"Processing {len(color_df)} games")
+            
+            # Get value counts of openings first
+            opening_counts = color_df['opening'].value_counts()
+            logger.info(f"Unique openings found: {len(opening_counts)}")
+            
+            # Process openings
+            for opening in opening_counts.index:
+                games = color_df[color_df['opening'] == opening]
+                total_games = len(games)
+                
+                wins = len(games[games['result_for_player'] == 'win'])
+                draws = len(games[games['result_for_player'].isin(
+                    ['agreed', 'timevsinsufficient', 'insufficient', 'stalemate', 'repetition'])])
+                losses = len(games[games['result_for_player'].isin(
+                    ['resigned', 'checkmated', 'timeout', 'abandoned'])])
+                
+                # Calculate points using the weighted system
+                points = (wins * 1.0) + (draws * 0.5) + (losses * 0)
+                points_percentage = (points / total_games) * 100
+                
+                opening_stats.append({
+                    'opening': opening,
+                    'points_percentage': points_percentage,
+                    'total_games': total_games,
+                    'wins': wins,
+                    'draws': draws,
+                    'losses': losses,
+                    'points': points
+                })
+            
+            logger.info(f"Processed {len(opening_stats)} openings")
+            return opening_stats
+        
+        def create_opening_chart(stats, title, output_path, best=True):
+            """Create bar chart for openings"""
+            try:
+                logger.info(f"Creating chart: {title}")
+                logger.info(f"Number of stats available: {len(stats)}")
+                
+                # Get top 5 or bottom 5 based on points percentage
+                selected_stats = stats[:5] if best else stats[-5:]
+                if not best:
+                    selected_stats = selected_stats[::-1]  # Reverse order for worst openings
+                
+                logger.info(f"Selected {len(selected_stats)} stats for visualization")
+                
+                # Prepare data for plotting
+                openings = [wrap_labels(s['opening'], width=25) for s in selected_stats]
+                wins = [s['wins'] for s in selected_stats]
+                draws = [s['draws'] for s in selected_stats]
+                losses = [s['losses'] for s in selected_stats]
+                
+                logger.info(f"Data prepared - Openings: {len(openings)}, Wins: {len(wins)}, Draws: {len(draws)}, Losses: {len(losses)}")
+                
+                # Create DataFrame for plotting
+                most_used_openings = pd.DataFrame({
+                    'wins': wins,
+                    'draws': draws,
+                    'losses': losses
+                }, index=openings)
+                
+                # Create figure with adjusted size ratio
+                plt.figure(figsize=(15, 8))
+                
+                # Create unstacked bar plot
+                ax = most_used_openings[["wins", "draws", "losses"]].plot.barh(
+                    rot=0, 
+                    color=["green", "blue", "red"], 
+                    stacked=False
+                )
+                
+                # Customize plot
+                ax.set_facecolor('xkcd:white')
+                
+                # Add legend in a box
+                ax.legend(
+                    prop={'size': 14},
+                    frameon=True,
+                    facecolor='white',
+                    edgecolor='black',
+                    bbox_to_anchor=(1.0, 1.0),
+                    loc='upper left',
+                    borderaxespad=0.
+                )
+                
+                # Center title with smaller size
+                plt.title(title, size=20, y=1.02, pad=15, ha='center')
+                
+                # Adjust labels
+                plt.xlabel("Number of Games", size=16, labelpad=20)
+                plt.xticks(fontsize=12)
+                plt.yticks(fontsize=12)
+                
+                # Add more space for the bars
+                plt.subplots_adjust(left=0.3)
+                
+                # Save figure
+                logger.info(f"Saving figure to: {output_path}")
+                plt.savefig(output_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                logger.info(f"Successfully created chart: {title}")
+                
+            except Exception as e:
+                logger.error(f"Error creating chart {title}: {str(e)}")
+                logger.error(f"Error type: {type(e).__name__}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                plt.close()
+                raise
+        
         # White openings analysis
         white_df = df[df['played_as'] == 'white']
-        white_op_freq = pd.DataFrame(white_df['opening'].value_counts())
-        w_li = []
-        for opening, row in white_op_freq.head(20).iterrows():
-            w_li.append(opening)
-            
-        wh_op_name = []
-        wh_win = []
-        wh_draw = []
-        wh_loss = []
+        logger.info(f"Found {len(white_df)} white games")
+        white_stats = calculate_opening_stats(white_df)
         
-        # Get top 5 openings data
-        for x in range(5):
-            wh_op_name.append(w_li[x])
-            k = white_df[white_df["opening"] == w_li[x]]
-            wh_win.append(k[k["result_for_player"].isin(["win"])].shape[0])
-            wh_draw.append(k[k["result_for_player"].isin(
-                ["agreed", "timevsinsufficient", "insufficient", "stalemate", "repetition"])].shape[0])
-            wh_loss.append(k[k["result_for_player"].isin(
-                ["resigned", "checkmated", "timeout", "abandoned"])].shape[0])
-        
-        di2 = {
-            'wins': wh_win,
-            'draws': wh_draw,
-            'losses': wh_loss
-        }
-        
-        # Wrap opening names
-        wrapped_names = [wrap_labels(name) for name in wh_op_name]
-        most_used_openings = pd.DataFrame(di2, index=wrapped_names)
-        
-        plt.figure(figsize=(15, 8))  # Increased figure size
-        ax = most_used_openings[["wins", "draws", "losses"]].plot.barh(
-            rot=0, color=["green", "blue", "red"], stacked=False)
-        ax.set_facecolor('xkcd:white')
-        
-        # Adjust plot spacing to accommodate wrapped labels
-        plt.subplots_adjust(left=0.3)  # Increase space for labels
-        
-        # Format legend and labels
-        ax.legend(prop={'size': 12}, bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.title("Result of Top 5 Openings as White:", size=14, y=1.05)
-        plt.xlabel("Number of Games", size=12, labelpad=10)
-        plt.xticks(fontsize=10)
-        plt.yticks(fontsize=10)
-        
-        # Add grid lines
-        ax.grid(True, axis='x', alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # Save white openings figure
-        output_path = os.path.join('player_data', username, "result_top_5_wh.png")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
+        # Create charts for most played openings (not most successful)
+        create_opening_chart(
+            sorted(white_stats, key=lambda x: x['total_games'], reverse=True),
+            "Results for Top 5 Openings as White",
+            os.path.join(output_dir, "result_top_5_wh.png"),
+            best=True
+        )
         
         # Black openings analysis
         black_df = df[df['played_as'] == 'black']
-        black_op_freq = pd.DataFrame(black_df['opening'].value_counts())
-        b_li = []
-        for opening, row in black_op_freq.head(20).iterrows():
-            b_li.append(opening)
-            
-        bl_op_name = []
-        bl_win = []
-        bl_draw = []
-        bl_loss = []
+        logger.info(f"Found {len(black_df)} black games")
+        black_stats = calculate_opening_stats(black_df)
         
-        # Get top 5 openings data
-        for x in range(5):
-            bl_op_name.append(b_li[x])
-            k = black_df[black_df["opening"] == b_li[x]]
-            bl_win.append(k[k["result_for_player"].isin(["win"])].shape[0])
-            bl_draw.append(k[k["result_for_player"].isin(
-                ["agreed", "timevsinsufficient", "insufficient", "stalemate", "repetition"])].shape[0])
-            bl_loss.append(k[k["result_for_player"].isin(
-                ["resigned", "checkmated", "timeout", "abandoned"])].shape[0])
-        
-        di2 = {
-            'wins': bl_win,
-            'draws': bl_draw,
-            'losses': bl_loss
-        }
-        
-        # Wrap opening names
-        wrapped_names = [wrap_labels(name) for name in bl_op_name]
-        most_used_openings = pd.DataFrame(di2, index=wrapped_names)
-        
-        plt.figure(figsize=(15, 8))  # Increased figure size
-        ax = most_used_openings[["wins", "draws", "losses"]].plot.barh(
-            rot=0, color=["green", "blue", "red"], stacked=False)
-        ax.set_facecolor('xkcd:white')
-        
-        # Adjust plot spacing to accommodate wrapped labels
-        plt.subplots_adjust(left=0.3)  # Increase space for labels
-        
-        # Format legend and labels
-        ax.legend(prop={'size': 12}, bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.title("Result of Top 5 Openings as Black:", size=14, y=1.05)
-        plt.xlabel("Number of Games", size=12, labelpad=10)
-        plt.xticks(fontsize=10)
-        plt.yticks(fontsize=10)
-        
-        # Add grid lines
-        ax.grid(True, axis='x', alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # Save black openings figure
-        output_path = os.path.join('player_data', username, "result_top_5_bl.png")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
+        # Create charts for most played openings (not most successful)
+        create_opening_chart(
+            sorted(black_stats, key=lambda x: x['total_games'], reverse=True),
+            "Results for Top 5 Openings as Black",
+            os.path.join(output_dir, "result_top_5_bl.png"),
+            best=True
+        )
         
         logger.info("Top 5 openings analysis complete")
         
     except Exception as e:
         logger.error(f"Error in top 5 openings analysis: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 def create_overall_results(df: pd.DataFrame, username: str) -> None:
@@ -676,7 +722,7 @@ def create_overall_results(df: pd.DataFrame, username: str) -> None:
         logger.error(f"Error in overall results: {str(e)}")
         raise
 
-def wh_heatmap_beg(df: pd.DataFrame, username: str) -> None:
+def wh_heatmap_beg(df: pd.DataFrame, username: str, vmax: Optional[float] = None) -> float:
     """Create heatmap for starting squares as white"""
     di = {
         "a1": [0, 0, 0, 0, 0, 0, 0, 0],
@@ -719,15 +765,17 @@ def wh_heatmap_beg(df: pd.DataFrame, username: str) -> None:
                              'e': e, 'f': f, 'g': g, 'h': h}, index=row)
 
     plt.figure(figsize=(10, 10))
-    board = sns.heatmap(board_open, cmap='Reds', square=True, linewidths=.1, linecolor='black')
+    board = sns.heatmap(board_open, cmap='Reds', square=True, linewidths=.1, linecolor='black', vmax=vmax)
     board.set_title('Starting Square Heatmap as White', size=18, y=1.05)
     
     output_path = os.path.join('player_data', username, "heatmap_starting_white.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
+    
+    return board_open.values.max()
 
-def wh_heatmap_end(df: pd.DataFrame, username: str) -> None:
+def wh_heatmap_end(df: pd.DataFrame, username: str, vmax: Optional[float] = None) -> float:
     """Create heatmap for landing squares as white"""
     di = {
         "a1": [0, 0, 0, 0, 0, 0, 0, 0],
@@ -770,15 +818,17 @@ def wh_heatmap_end(df: pd.DataFrame, username: str) -> None:
                              'e': e, 'f': f, 'g': g, 'h': h}, index=row)
 
     plt.figure(figsize=(10, 10))
-    board = sns.heatmap(board_open, cmap='Reds', square=True, linewidths=.1, linecolor='black')
+    board = sns.heatmap(board_open, cmap='Reds', square=True, linewidths=.1, linecolor='black', vmax=vmax)
     board.set_title('Landing Square Heatmap as White', size=18, y=1.05)
     
     output_path = os.path.join('player_data', username, "heatmap_landing_white.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
+    
+    return board_open.values.max()
 
-def bl_heatmap_beg(df: pd.DataFrame, username: str) -> None:
+def bl_heatmap_beg(df: pd.DataFrame, username: str, vmax: Optional[float] = None) -> float:
     """Create heatmap for starting squares as black"""
     # Initialize the board matrix directly (8x8)
     board_matrix = np.zeros((8, 8))
@@ -809,15 +859,17 @@ def bl_heatmap_beg(df: pd.DataFrame, username: str) -> None:
     )
 
     plt.figure(figsize=(10, 10))
-    board = sns.heatmap(board_df, cmap='Blues', square=True, linewidths=.1, linecolor='black')
+    board = sns.heatmap(board_df, cmap='Blues', square=True, linewidths=.1, linecolor='black', vmax=vmax)
     board.set_title('Starting Square Heatmap as Black', size=18, y=1.05)
     
     output_path = os.path.join('player_data', username, "heatmap_starting_black.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
+    
+    return board_matrix.max()
 
-def bl_heatmap_end(df: pd.DataFrame, username: str) -> None:
+def bl_heatmap_end(df: pd.DataFrame, username: str, vmax: Optional[float] = None) -> float:
     """Create heatmap for landing squares as black"""
     # Initialize the board matrix directly (8x8)
     board_matrix = np.zeros((8, 8))
@@ -848,24 +900,35 @@ def bl_heatmap_end(df: pd.DataFrame, username: str) -> None:
     )
 
     plt.figure(figsize=(10, 10))
-    board = sns.heatmap(board_df, cmap='Blues', square=True, linewidths=.1, linecolor='black')
+    board = sns.heatmap(board_df, cmap='Blues', square=True, linewidths=.1, linecolor='black', vmax=vmax)
     board.set_title('Landing Square Heatmap as Black', size=18, y=1.05)
     
     output_path = os.path.join('player_data', username, "heatmap_landing_black.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
+    
+    return board_matrix.max()
 
 def create_combined_heatmaps(df: pd.DataFrame, username: str) -> None:
     """Create and combine all heatmaps"""
     try:
         logger.info("Creating combined heatmap visualizations...")
         
-        # Create individual heatmaps
-        wh_heatmap_beg(df, username)
-        wh_heatmap_end(df, username)
-        bl_heatmap_beg(df, username)
-        bl_heatmap_end(df, username)
+        # First pass to get max values for consistent scales
+        white_start_max = wh_heatmap_beg(df, username, None)
+        white_end_max = wh_heatmap_end(df, username, None)
+        white_max = max(white_start_max, white_end_max)
+        
+        black_start_max = bl_heatmap_beg(df, username, None)
+        black_end_max = bl_heatmap_end(df, username, None)
+        black_max = max(black_start_max, black_end_max)
+        
+        # Second pass with consistent scales
+        wh_heatmap_beg(df, username, white_max)
+        wh_heatmap_end(df, username, white_max)
+        bl_heatmap_beg(df, username, black_max)
+        bl_heatmap_end(df, username, black_max)
         
         # Create combined figure for white heatmaps
         plt.figure(figsize=(20, 10))
