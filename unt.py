@@ -65,7 +65,6 @@ def check_dependencies() -> bool:
         import chess
         import chess.svg
         import chess.pgn
-        from cairosvg import svg2png
         
         # Configure matplotlib for non-interactive backend
         plt.switch_backend('Agg')
@@ -248,31 +247,100 @@ def most_used_wh(df: pd.DataFrame, username: str) -> None:
         logger.info("Creating top 3 first moves visualization...")
         import chess
         import chess.svg
-        import chess.pgn
-        from cairosvg import svg2png
-
+        
         # Get top 3 moves as white
         white_df = df[df["played_as"] == "white"]
-        top_move = white_df["first_move"].value_counts().to_frame()
-        top_move_list = []
-        ret_di = {}
+        if white_df.empty:
+            logger.warning("No games found as white pieces")
+            return
+            
+        # Extract and count first moves
+        first_moves = white_df["first_move"].value_counts()
+        logger.info(f"Found first moves: {first_moves.to_dict()}")
         
-        for move, row in top_move.head(3).iterrows():
-            top_move_list.append(move)
-            ret_di.update({move: row["first_move"]})
+        if first_moves.empty:
+            logger.warning("No first moves found in white games")
+            return
+        
+        # Function to convert short notation to UCI
+        def to_uci(move):
+            if not isinstance(move, str):
+                return None
+            # Common pawn moves
+            if move == 'e4':
+                return 'e2e4'
+            if move == 'd4':
+                return 'd2d4'
+            if move == 'c4':
+                return 'c2c4'
+            if move == 'g3':
+                return 'g2g3'
+            if move == 'f4':
+                return 'f2f4'
+            if move == 'b3':
+                return 'b2b3'
+            if move == 'a3':
+                return 'a2a3'
+            if move == 'h3':
+                return 'h2h3'
+            # Knight moves
+            if move == 'Nf3':
+                return 'g1f3'
+            if move == 'Nc3':
+                return 'b1c3'
+            # Return original if it's already in UCI format
+            if len(move) == 4 and move[0] in 'abcdefgh' and move[1] in '12345678' and move[2] in 'abcdefgh' and move[3] in '12345678':
+                return move
+            return None
         
         # Generate board visualizations
         num = 0
-        for x in top_move_list:
-            num += 1
-            board = chess.Board()
-            board.push(chess.Move.from_uci(x))
-            
-            # Generate SVG and convert to PNG
-            svg_code = chess.svg.board(board=board)
-            output_path = os.path.join('player_data', username, f'top_opening_move_as_white_{num}.png')
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            svg2png(bytestring=svg_code, write_to=output_path, scale=4.0)
+        for move in first_moves.index[:3]:  # Take top 3 moves
+            try:
+                num += 1
+                logger.info(f"Generating visualization for move {num}: {move}")
+                
+                # Convert move to UCI format
+                uci_move = to_uci(move)
+                if not uci_move:
+                    logger.warning(f"Could not convert move {move} to UCI format")
+                    continue
+                
+                # Create board and make move
+                board = chess.Board()
+                chess_move = chess.Move.from_uci(uci_move)
+                board.push(chess_move)
+                
+                # Generate SVG with custom colors
+                svg_content = chess.svg.board(
+                    board=board,
+                    size=600,  # Increased from 500 to 600
+                    coordinates=True,
+                    colors={
+                        'square light': '#f0d9b5',
+                        'square dark': '#b58863',
+                        'square light lastmove': '#aad75b',
+                        'square dark lastmove': '#82a648',
+                        'margin': 'none',
+                        'coord': '#666'
+                    },
+                    style='overflow: visible'
+                )
+                
+                # Save SVG directly
+                output_dir = os.path.join('player_data', username)
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f'top_opening_move_as_white_{num}.svg')
+                
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(svg_content)
+                
+                logger.info(f"Saved SVG file: {output_path}")
+                
+            except Exception as move_error:
+                logger.error(f"Error processing move {num} ({move}): {str(move_error)}")
+                logger.error(f"Traceback: {move_error.__traceback__}")
+                continue
         
         logger.info("Top 3 first moves visualization complete")
         
@@ -281,50 +349,90 @@ def most_used_wh(df: pd.DataFrame, username: str) -> None:
         raise
 
 def create_rating_ladder(df: pd.DataFrame, username: str) -> None:
-    """Create rating progress visualization"""
+    """Create rating progress visualization showing last 150 games for each time control"""
     try:
         logger.info("Creating rating ladder visualization...")
         
-        # Get last 150 blitz games
-        blitz_games = df[df['rated'] & df['time_class'].isin(["blitz"])].tail(150)
+        # Define time controls we want to track (excluding daily)
+        time_controls = ["bullet", "blitz", "rapid"]
         
         # Create figure with seaborn style
         plt.figure(figsize=(12, 6))
         sns.set_style("darkgrid", {'axes.grid': True, 'grid.color': '.8', 'grid.linestyle': '-'})
         
-        # Create line plot
-        ax = sns.lineplot(data=blitz_games, x=range(len(blitz_games)), y='player_rating', 
-                         color='#FF4D4D', linewidth=1, marker='o', markersize=4)
+        # Track if we have any data to plot
+        has_data = False
         
+        # Define markers and colors for each time control with better visibility
+        style_map = {
+            'bullet': ('X', '#FF3333'),  # Changed 'x' to 'X' for bigger marker, Bright red
+            'blitz': ('o', '#0066CC'),   # Deep blue circle
+            'rapid': ('s', '#00CC66'),   # Deep green square
+        }
+        
+        # Process each time control
+        for time_class in time_controls:
+            # Get last 150 rated games for this time control
+            games = df[
+                (df['rated']) & 
+                (df['time_class'] == time_class)
+            ].tail(150)
+            
+            # Skip if no games for this time control
+            if games.empty:
+                logger.info(f"No rated {time_class} games found")
+                continue
+                
+            # Remove any NaN values from player_rating
+            games = games.dropna(subset=['player_rating'])
+            
+            if not games.empty:
+                has_data = True
+                marker, color = style_map[time_class]
+                # Create line plot
+                sns.lineplot(
+                    data=games, 
+                    x=range(len(games)), 
+                    y='player_rating',
+                    label=time_class.capitalize(),
+                    marker=marker,
+                    color=color,
+                    markersize=8,  # Increased from 6
+                    markeredgewidth=2,  # Added to make markers more visible
+                    linewidth=1.5
+                )
+        
+        if not has_data:
+            logger.warning("No rated games found in any time control")
+            return
+            
         # Customize the plot
-        plt.title("Player's Elo Rating in the last 150 Rated Games", size=14, pad=10)
-        plt.xlabel('game_no', size=12)
-        plt.ylabel('player_rating', size=12)
+        plt.title("Rating Progress by Time Control (Last 150 Games per Type)", size=14, pad=20)
+        plt.xlabel("Game Number", size=12)
+        plt.ylabel("Rating", size=12)
         
-        # Set background color
-        ax.set_facecolor('#F0F2F6')
-        plt.grid(True, alpha=0.3)
+        # Add legend with custom title
+        plt.legend(
+            title="Time Control",
+            title_fontsize=12,
+            fontsize=10,
+            bbox_to_anchor=(1.05, 1),
+            loc='upper left'
+        )
         
-        # Adjust y-axis to show more detail in rating changes
-        y_min = blitz_games['player_rating'].min() - 20
-        y_max = blitz_games['player_rating'].max() + 20
-        plt.ylim(y_min, y_max)
-        
-        # Add padding to the plot
-        plt.margins(x=0.02)
-        
+        # Adjust layout to prevent label cutoff
         plt.tight_layout()
         
-        # Save figure
+        # Save the plot
         output_path = os.path.join('player_data', username, "rating_ladder_red.png")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         
-        logger.info("Rating ladder visualization complete")
+        logger.info("Rating ladder visualization created successfully")
         
     except Exception as e:
-        logger.error(f"Error in rating ladder: {str(e)}")
+        logger.error(f"Error creating rating ladder: {str(e)}")
         raise
 
 def create_result_distribution(df: pd.DataFrame, username: str) -> None:

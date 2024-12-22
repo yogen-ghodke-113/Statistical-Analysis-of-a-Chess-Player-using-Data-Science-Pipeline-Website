@@ -1,3 +1,16 @@
+import streamlit as st
+import io
+import logging
+import time
+
+# Must be the first Streamlit command
+st.set_page_config(
+    page_title="Chess Analysis Dashboard",
+    page_icon="♟️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Standard library imports
 import os
 from typing import Dict, Any
@@ -52,10 +65,6 @@ def check_dependencies() -> None:
         'chess': 'python-chess'
     }
     
-    optional_packages = {
-        'cairosvg': 'cairosvg'
-    }
-    
     missing_packages = []
     for package, pip_name in required_packages.items():
         try:
@@ -70,26 +79,6 @@ def check_dependencies() -> None:
         pip install {' '.join(missing_packages)}
         """)
         st.stop()
-        
-    # Check optional packages
-    missing_optional = []
-    for package, pip_name in optional_packages.items():
-        try:
-            __import__(package)
-        except (ImportError, OSError):
-            missing_optional.append(pip_name)
-            
-    if missing_optional:
-        st.warning(f"""
-        Some optional features will be disabled. To enable all features, install:
-        {' '.join(missing_optional)}
-        
-        For Windows users:
-        1. Download GTK3 Runtime from:
-           https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
-        2. Run the installer
-        3. Restart your Python environment
-        """)
 
 def init_session_state() -> None:
     """Initialize session state variables"""
@@ -182,24 +171,69 @@ def render_user_input_tab() -> None:
                 st.session_state.analysis_complete = True
                 st.rerun()
             else:
-                with st.spinner("🔄 Analyzing chess games... This may take a few minutes."):
-                    try:
-                        gd.driver_fn(username)
-                        viz.visualize_data(username)
-                        st.success("✅ Analysis complete! Switch to the Player Analysis tab to view results.")
-                        st.session_state.username = username
-                        st.session_state.analysis_complete = True
-                        st.rerun()
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "User not found" in error_msg:
-                            st.error("❌ " + error_msg)
-                        elif "No games found" in error_msg:
-                            st.error("❌ " + error_msg)
-                        elif "Unable to connect" in error_msg:
-                            st.error("🌐 " + error_msg)
-                        else:
-                            st.error("❌ An error occurred during analysis: " + error_msg)
+                # Create placeholder for progress bar and status
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                log_output = st.empty()
+                
+                try:
+                    # Update status
+                    status_text.text("🔄 Downloading games from Chess.com...")
+                    progress_bar.progress(10)
+                    
+                    # Create StringIO to capture logs
+                    log_capture = io.StringIO()
+                    log_handler = logging.StreamHandler(log_capture)
+                    log_handler.setFormatter(logging.Formatter('%(message)s'))
+                    logging.getLogger().addHandler(log_handler)
+                    
+                    # Download data
+                    gd.driver_fn(username)
+                    progress_bar.progress(40)
+                    status_text.text("🔄 Processing game data...")
+                    
+                    # Update log display
+                    log_output.code(log_capture.getvalue())
+                    
+                    # Visualize data
+                    status_text.text("🔄 Creating visualizations...")
+                    progress_bar.progress(70)
+                    viz.visualize_data(username)
+                    
+                    # Complete
+                    progress_bar.progress(100)
+                    status_text.text("✅ Analysis complete!")
+                    
+                    # Update session state
+                    st.session_state.username = username
+                    st.session_state.analysis_complete = True
+                    
+                    # Show success message with instructions
+                    st.success("""
+                    ✅ Analysis complete! 
+                    
+                    Click on the Player Analysis tab to view your results.
+                    
+                    Your analysis has been cached and will load instantly next time.
+                    """)
+                    
+                    # Keep success message visible
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    progress_bar.empty()
+                    error_msg = str(e)
+                    if "User not found" in error_msg:
+                        st.error("❌ " + error_msg)
+                    elif "No games found" in error_msg:
+                        st.error("❌ " + error_msg)
+                    elif "Unable to connect" in error_msg:
+                        st.error("🌐 " + error_msg)
+                    else:
+                        st.error("❌ An error occurred during analysis: " + error_msg)
+                finally:
+                    # Remove log handler
+                    logging.getLogger().removeHandler(log_handler)
         else:
             st.warning("Please enter a username")
 
@@ -239,14 +273,18 @@ def render_analysis_content(username: str) -> None:
         
         # Top First Moves
         st.header("Top 3 First Moves as White")
-        col1, col2, col3 = st.columns(3)
+        cols = st.columns([1.2, 1.2, 1.2, 0.1])  # Increased width of chess board columns, minimal spacer
         
         # Check for move visualizations
-        for i, col in enumerate([col1, col2, col3], 1):
-            move_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.png')
+        for i, col in enumerate(cols[:-1], 1):  # Skip the last spacer column
+            move_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.svg')
             with col:
                 if os.path.exists(move_path):
-                    st.image(move_path, caption=f"Move {i}")
+                    # Read SVG file
+                    with open(move_path, 'r', encoding='utf-8') as f:
+                        svg_content = f.read()
+                    # Display SVG using html component with increased height
+                    st.components.v1.html(svg_content, height=600)  # Increased height further
                 else:
                     st.warning(f"Move {i} visualization not available")
         
@@ -294,10 +332,10 @@ def render_analysis_content(username: str) -> None:
         visualizations = [
             ("fight.png", "Game Length Analysis", 
              "This chart shows the number of moves in your last 100 lost games."),
-            ("rating_ladder_red.png", "Rating Progress", 
-             "This chart shows your rating progression over your last 150 rated games."),
             ("time_class.png", "Time Control Distribution", 
              "This pie chart shows the distribution of different time controls in your games."),
+            ("rating_ladder_red.png", "Rating Progress", 
+             "This chart shows your rating progression over your last 150 rated games."),
             ("overall_results.png", "Overall Results", 
              "This bar chart shows the distribution of all your game results."),
             ("result_top_5_wh.png", "Results for Top 5 Openings as White", 
@@ -395,14 +433,6 @@ def main() -> None:
     # Check dependencies before starting the app
     check_dependencies()
     
-    # Page config
-    st.set_page_config(
-        page_title="Chess Analysis Dashboard",
-        page_icon="♟️",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
     # Initialize session state
     init_session_state()
 

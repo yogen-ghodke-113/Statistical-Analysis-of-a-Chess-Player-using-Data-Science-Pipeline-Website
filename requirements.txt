@@ -9,4 +9,6 @@ requests>=2.28.0
 scikit-learn>=1.2.0
 statsmodels>=0.13.0
 setuptools>=65.5.1
-mord==0.7 
+mord==0.7
+plotly>=5.13.0
+kaleido  # Required for plotly static image export

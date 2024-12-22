@@ -5,6 +5,7 @@ import os
 from typing import List, Dict, Any
 import time
 import concurrent.futures
+import logging
 
 # Add proper chess module import with error handling
 try:
@@ -13,6 +14,8 @@ except ImportError:
     raise ImportError(
         "python-chess is required. Install it with: pip install python-chess"
     )
+
+logger = logging.getLogger(__name__)
 
 def getGames(username: str) -> List[Dict[str, Any]]:
     """Get all games for a user from chess.com API"""
@@ -32,20 +35,22 @@ def getGames(username: str) -> List[Dict[str, Any]]:
         
         archives = response.json()["archives"]
         
-        # Get games from each archive
+        # Get games from all archives
         all_games = []
-        for archive_url in archives[-6:]:  # Get last 6 months of games
+        for archive_url in archives:  # Get all archives instead of just last 6 months
             try:
                 response = requests.get(archive_url, headers=headers, timeout=10)
                 response.raise_for_status()
                 all_games.extend(response.json()["games"])
+                logger.info(f"Fetched {len(response.json()['games'])} games from {archive_url}")
             except requests.exceptions.RequestException as e:
-                print(f"Warning: Could not fetch archive {archive_url}: {str(e)}")
+                logger.warning(f"Could not fetch archive {archive_url}: {str(e)}")
                 continue
         
         if not all_games:
-            raise Exception("No games found for this user in the last 6 months")
+            raise Exception("No games found for this user")
         
+        logger.info(f"Total games fetched: {len(all_games)}")
         return all_games
         
     except requests.exceptions.RequestException as e:
