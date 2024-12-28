@@ -120,7 +120,7 @@ def render_home_tab() -> None:
         st.markdown("""
             <h1 style='text-align: center; color: white; margin: 0;'>
                 Statistical Analysis of a Chess Player using Data Science Pipeline
-            </h1> <br><hr>
+            </h1> <hr>
             """, 
             unsafe_allow_html=True
         )
@@ -505,16 +505,50 @@ def render_about_tab() -> None:
     """Render the about tab content"""
     st.title("About")
     
-    st.markdown(
-        "> *I don't believe in psychology. I believe in good moves.*\n>\n> — Robert James Fischer",
-        unsafe_allow_html=False
-    )
+    # Create two columns with different widths
+    col1, col2 = st.columns([1.2, 1])
     
-    st.header("This software was written by:")
-    st.subheader("Yogen Ghodke")
+    with col1:
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("""
+            #### © Yogen Ghodke
+            #### Contact Information
+            - **LinkedIn**: [Yogen Ghodke](https://www.linkedin.com/in/yogenghodke/)
+            - **Email**: yogenghodke@gmail.com
+        """)
+        
+        # Add resume display with a button
+        resume_path = "img_files/Yogen_Ghodke_Resume_28_Nov_24.pdf"
+        if os.path.exists(resume_path):
+            with open(resume_path, "rb") as pdf_file:
+                PDFbyte = pdf_file.read()
+            st.download_button(
+                label="📄 Download Resume",
+                data=PDFbyte,
+                file_name="Yogen_Ghodke_Resume.pdf",
+                mime="application/pdf"
+            )
+        
+        st.markdown("""
+            ### I'm currently open to job opportunities! Feel free to reach out via LinkedIn or email.
+            ---
+            ### Special Thanks
+            - **FreeCodeCamp**
+              - For their comprehensive tutorials and resources
+            - **Corey Schafer**
+              - For excellent Python programming tutorials
+            - **Chess.com**
+              - For providing the API and game data
+        """)
     
-    st.header("Special Thanks to:")
-    st.write("FreeCodeCamp, Corey Schaffer (YouTubers)")
+    with col2:
+        # Add Gukesh's image and congratulatory message
+        st.image("img_files/gukesh.jpg", width=450)
+        st.markdown("""
+            <p style='text-align: center; font-style: italic; font-size: 1.2em; margin-top: 10px;'>
+                Congratulations to Gukesh for becoming the youngest World Chess Champion!
+            </p>
+        """, unsafe_allow_html=True)
 
 def main() -> None:
     """Main application entry point"""
