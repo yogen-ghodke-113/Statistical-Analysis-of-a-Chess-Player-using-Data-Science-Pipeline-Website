@@ -17,6 +17,11 @@ First, clone the project repository to your local machine:
 
 ```bash
 git clone https://github.com/yogen-ghodke-113/Statistical-Analysis-of-a-Chess-Player-using-Data-Science-Pipeline-Website.git
+```
+
+Navigate to the project directory:
+
+```bash
 cd Statistical-Analysis-of-a-Chess-Player-using-Data-Science-Pipeline-Website
 ```
 
