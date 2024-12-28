@@ -56,6 +56,13 @@ except ImportError as e:
     Error: {str(e)}
     """)
 
+try:
+    import cairosvg
+except ImportError:
+    raise ImportError(
+        "CairoSVG is required. Install it with: pip install cairosvg"
+    )
+
 def check_dependencies() -> None:
     """Check if all visualization dependencies are installed"""
     required_packages = {
@@ -164,76 +171,67 @@ def render_user_input_tab() -> None:
     
     if st.button("Analyze Games"):
         if username:
-            # Check if cached analysis exists
-            if check_cached_analysis(username):
-                st.success("✅ Found cached analysis! Showing results from previous analysis.")
+            # Create placeholder for progress bar and status
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            log_output = st.empty()
+            
+            try:
+                # Update status
+                status_text.text("🔄 Downloading games from Chess.com...")
+                progress_bar.progress(10)
+                
+                # Create StringIO to capture logs
+                log_capture = io.StringIO()
+                log_handler = logging.StreamHandler(log_capture)
+                log_handler.setFormatter(logging.Formatter('%(message)s'))
+                logging.getLogger().addHandler(log_handler)
+                
+                # Download data
+                gd.driver_fn(username)
+                progress_bar.progress(40)
+                status_text.text("🔄 Processing game data...")
+                
+                # Update log display
+                log_output.code(log_capture.getvalue())
+                
+                # Visualize data
+                status_text.text("🔄 Creating visualizations...")
+                progress_bar.progress(70)
+                viz.visualize_data(username)
+                
+                # Complete
+                progress_bar.progress(100)
+                status_text.text("✅ Analysis complete!")
+                
+                # Update session state
                 st.session_state.username = username
                 st.session_state.analysis_complete = True
-                st.rerun()
-            else:
-                # Create placeholder for progress bar and status
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                log_output = st.empty()
                 
-                try:
-                    # Update status
-                    status_text.text("🔄 Downloading games from Chess.com...")
-                    progress_bar.progress(10)
-                    
-                    # Create StringIO to capture logs
-                    log_capture = io.StringIO()
-                    log_handler = logging.StreamHandler(log_capture)
-                    log_handler.setFormatter(logging.Formatter('%(message)s'))
-                    logging.getLogger().addHandler(log_handler)
-                    
-                    # Download data
-                    gd.driver_fn(username)
-                    progress_bar.progress(40)
-                    status_text.text("🔄 Processing game data...")
-                    
-                    # Update log display
-                    log_output.code(log_capture.getvalue())
-                    
-                    # Visualize data
-                    status_text.text("🔄 Creating visualizations...")
-                    progress_bar.progress(70)
-                    viz.visualize_data(username)
-                    
-                    # Complete
-                    progress_bar.progress(100)
-                    status_text.text("✅ Analysis complete!")
-                    
-                    # Update session state
-                    st.session_state.username = username
-                    st.session_state.analysis_complete = True
-                    
-                    # Show success message with instructions
-                    st.success("""
-                    ✅ Analysis complete! 
-                    
-                    Click on the Player Analysis tab to view your results.
-                    
-                    Your analysis has been cached and will load instantly next time.
-                    """)
-                    
-                    # Keep success message visible
-                    time.sleep(2)
-                    
-                except Exception as e:
-                    progress_bar.empty()
-                    error_msg = str(e)
-                    if "User not found" in error_msg:
-                        st.error("❌ " + error_msg)
-                    elif "No games found" in error_msg:
-                        st.error("❌ " + error_msg)
-                    elif "Unable to connect" in error_msg:
-                        st.error("🌐 " + error_msg)
-                    else:
-                        st.error("❌ An error occurred during analysis: " + error_msg)
-                finally:
-                    # Remove log handler
-                    logging.getLogger().removeHandler(log_handler)
+                # Show success message with instructions
+                st.success("""
+                ✅ Analysis complete! 
+                
+                Click on the Player Analysis tab to view your results.
+                """)
+                
+                # Keep success message visible
+                time.sleep(2)
+                
+            except Exception as e:
+                progress_bar.empty()
+                error_msg = str(e)
+                if "User not found" in error_msg:
+                    st.error("❌ " + error_msg)
+                elif "No games found" in error_msg:
+                    st.error("❌ " + error_msg)
+                elif "Unable to connect" in error_msg:
+                    st.error("🌐 " + error_msg)
+                else:
+                    st.error("❌ An error occurred during analysis: " + error_msg)
+            finally:
+                # Remove log handler
+                logging.getLogger().removeHandler(log_handler)
         else:
             st.warning("Please enter a username")
 
@@ -273,18 +271,53 @@ def render_analysis_content(username: str) -> None:
         
         # Top First Moves
         st.header("Top 3 First Moves as White")
-        cols = st.columns([1.2, 1.2, 1.2, 0.1])  # Increased width of chess board columns, minimal spacer
+        cols = st.columns([1.2, 1.2, 1.2, 0.1])
         
         # Check for move visualizations
-        for i, col in enumerate(cols[:-1], 1):  # Skip the last spacer column
-            move_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.svg')
+        for i, col in enumerate(cols[:-1], 1):
+            svg_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.svg')
+            png_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.png')
+            
             with col:
-                if os.path.exists(move_path):
-                    # Read SVG file
-                    with open(move_path, 'r', encoding='utf-8') as f:
-                        svg_content = f.read()
-                    # Display SVG using html component with increased height
-                    st.components.v1.html(svg_content, height=600)  # Increased height further
+                if os.path.exists(svg_path):
+                    try:
+                        # Convert SVG to PNG if not already done
+                        if not os.path.exists(png_path):
+                            cairosvg.svg2png(
+                                url=svg_path,
+                                write_to=png_path,
+                                scale=2.0  # Increase quality
+                            )
+                        # Display PNG image
+                        st.image(png_path)
+                    except Exception as e:
+                        st.error(f"Error converting chess board {i}: {str(e)}")
+                else:
+                    st.warning(f"Move {i} visualization not available")
+        
+        # Top Black Replies
+        st.header("Top 3 Replies as Black")
+        cols = st.columns([1.2, 1.2, 1.2, 0.1])
+        
+        # Check for black reply visualizations
+        for i, col in enumerate(cols[:-1], 1):
+            svg_path = os.path.join('player_data', username, f'top_reply_move_as_black_{i}.svg')
+            png_path = os.path.join('player_data', username, f'top_reply_move_as_black_{i}.png')
+            
+            with col:
+                if os.path.exists(svg_path):
+                    try:
+                        # Convert SVG to PNG if not already done
+                        if not os.path.exists(png_path):
+                            cairosvg.svg2png(
+                                url=svg_path,
+                                write_to=png_path,
+                                scale=2.0  # Increase quality
+                            )
+                        # Display PNG image
+                        st.image(png_path)
+                    except Exception as e:
+                        st.error(f"Error converting chess board {i}: {str(e)}")
                 else:
                     st.warning(f"Move {i} visualization not available")
         

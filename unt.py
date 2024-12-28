@@ -9,6 +9,7 @@ import _thread
 import io
 import chess
 import chess.pgn
+import cairosvg
 
 # Set up logging with file output
 log_dir = "logs"
@@ -261,91 +262,150 @@ def most_used_wh(df: pd.DataFrame, username: str) -> None:
         if first_moves.empty:
             logger.warning("No first moves found in white games")
             return
-        
-        # Function to convert short notation to UCI
-        def to_uci(move):
-            if not isinstance(move, str):
-                return None
-            # Common pawn moves
-            if move == 'e4':
-                return 'e2e4'
-            if move == 'd4':
-                return 'd2d4'
-            if move == 'c4':
-                return 'c2c4'
-            if move == 'g3':
-                return 'g2g3'
-            if move == 'f4':
-                return 'f2f4'
-            if move == 'b3':
-                return 'b2b3'
-            if move == 'a3':
-                return 'a2a3'
-            if move == 'h3':
-                return 'h2h3'
-            # Knight moves
-            if move == 'Nf3':
-                return 'g1f3'
-            if move == 'Nc3':
-                return 'b1c3'
-            # Return original if it's already in UCI format
-            if len(move) == 4 and move[0] in 'abcdefgh' and move[1] in '12345678' and move[2] in 'abcdefgh' and move[3] in '12345678':
-                return move
-            return None
-        
-        # Generate board visualizations
-        num = 0
-        for move in first_moves.index[:3]:  # Take top 3 moves
+
+        # Process top 3 moves
+        for i, (move, count) in enumerate(first_moves.head(3).items(), 1):
             try:
-                num += 1
-                logger.info(f"Generating visualization for move {num}: {move}")
-                
-                # Convert move to UCI format
-                uci_move = to_uci(move)
-                if not uci_move:
-                    logger.warning(f"Could not convert move {move} to UCI format")
-                    continue
-                
-                # Create board and make move
+                # Create a new board
                 board = chess.Board()
-                chess_move = chess.Move.from_uci(uci_move)
-                board.push(chess_move)
                 
-                # Generate SVG with custom colors
+                # Parse move using python-chess's built-in parser
+                try:
+                    chess_move = board.parse_san(move)
+                    board.push(chess_move)
+                except ValueError:
+                    logger.warning(f"Could not parse move {move}")
+                    continue
+                    
+                # Generate SVG with Lichess-style colors
                 svg_content = chess.svg.board(
                     board=board,
-                    size=600,  # Increased from 500 to 600
+                    size=400,
                     coordinates=True,
                     colors={
-                        'square light': '#f0d9b5',
-                        'square dark': '#b58863',
-                        'square light lastmove': '#aad75b',
-                        'square dark lastmove': '#82a648',
+                        'square light': '#f0d9b5',  # Lichess brown light squares
+                        'square dark': '#b58863',   # Lichess brown dark squares
+                        'square light lastmove': '#cdd26a',  # Lichess last move highlight light
+                        'square dark lastmove': '#aaa23a',   # Lichess last move highlight dark
                         'margin': 'none',
-                        'coord': '#666'
-                    },
-                    style='overflow: visible'
+                        'coord': '#666666'          # Lichess coordinate color
+                    }
                 )
                 
-                # Save SVG directly
-                output_dir = os.path.join('player_data', username)
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = os.path.join(output_dir, f'top_opening_move_as_white_{num}.svg')
-                
-                with open(output_path, 'w', encoding='utf-8') as f:
+                # Save SVG first
+                svg_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.svg')
+                with open(svg_path, 'w') as f:
                     f.write(svg_content)
                 
-                logger.info(f"Saved SVG file: {output_path}")
+                # Convert to PNG
+                png_path = os.path.join('player_data', username, f'top_opening_move_as_white_{i}.png')
+                cairosvg.svg2png(
+                    url=svg_path,
+                    write_to=png_path,
+                    scale=2.0  # Increase quality
+                )
                 
-            except Exception as move_error:
-                logger.error(f"Error processing move {num} ({move}): {str(move_error)}")
-                logger.error(f"Traceback: {move_error.__traceback__}")
+                logger.info(f"Successfully created visualization for move {i}: {move}")
+                
+            except Exception as e:
+                logger.error(f"Error creating visualization for move {i}: {str(e)}")
                 continue
-        
-        logger.info("Top 3 first moves visualization complete")
-        
+                
     except Exception as e:
-        logger.error(f"Error in top 3 first moves visualization: {str(e)}")
+        logger.error(f"Error in top moves visualization: {str(e)}")
+        raise
+
+def most_used_bl(df: pd.DataFrame, username: str) -> None:
+    """Generate chess board visualizations for top 3 first replies as black"""
+    try:
+        logger.info("Creating top 3 black replies visualization...")
+        import chess
+        import chess.svg
+        import chess.pgn
+        
+        # Get games where user played as black
+        black_games = df[df['played_as'] == "black"]
+        if black_games.empty:
+            logger.warning("No games found as black pieces")
+            return
+            
+        # Dictionary to store black's first moves
+        black_replies = {}
+        
+        # Process each game to extract black's first move
+        for _, row in black_games.iterrows():
+            pgn = chess.pgn.read_game(io.StringIO(row['PGN']))
+            if pgn:
+                moves = list(pgn.mainline_moves())
+                if len(moves) >= 2:  # Make sure there are at least 2 moves
+                    board = chess.Board()
+                    board.push(moves[0])  # Apply white's first move
+                    black_move = moves[1]  # Get black's response
+                    move_san = board.san(black_move)  # Get move in SAN notation
+                    black_replies[move_san] = black_replies.get(move_san, 0) + 1
+
+        if not black_replies:
+            logger.warning("No black replies found")
+            return
+
+        # Sort replies by frequency
+        sorted_replies = sorted(black_replies.items(), key=lambda x: x[1], reverse=True)
+        logger.info(f"Found black replies: {dict(sorted_replies)}")
+
+        # Process top 3 replies
+        for i, (move, count) in enumerate(sorted_replies[:3], 1):
+            try:
+                # Create a new board
+                board = chess.Board()
+                
+                # Make a common first move for white (e4) to show black's reply context
+                board.push_san("e4")  # We'll show black's replies against e4
+                
+                # Parse black's move
+                try:
+                    chess_move = board.parse_san(move)
+                    board.push(chess_move)
+                except ValueError:
+                    logger.warning(f"Could not parse move {move}")
+                    continue
+                    
+                # Generate SVG with Lichess-style colors
+                svg_content = chess.svg.board(
+                    board=board,
+                    size=400,
+                    coordinates=True,
+                    orientation=chess.BLACK,  # Show board from black's perspective
+                    colors={
+                        'square light': '#f0d9b5',  # Lichess brown light squares
+                        'square dark': '#b58863',   # Lichess brown dark squares
+                        'square light lastmove': '#cdd26a',  # Lichess last move highlight light
+                        'square dark lastmove': '#aaa23a',   # Lichess last move highlight dark
+                        'margin': 'none',
+                        'coord': '#666666'          # Lichess coordinate color
+                    }
+                )
+                
+                # Save SVG first
+                svg_path = os.path.join('player_data', username, f'top_reply_move_as_black_{i}.svg')
+                with open(svg_path, 'w') as f:
+                    f.write(svg_content)
+                
+                # Convert to PNG
+                png_path = os.path.join('player_data', username, f'top_reply_move_as_black_{i}.png')
+                cairosvg.svg2png(
+                    url=svg_path,
+                    write_to=png_path,
+                    scale=2.0  # Increase quality
+                )
+                
+                logger.info(f"Successfully created visualization for black reply {i}: {move}")
+                
+            except Exception as e:
+                logger.error(f"Error creating visualization for move {i}: {str(e)}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error in top black replies visualization: {str(e)}")
         raise
 
 def create_rating_ladder(df: pd.DataFrame, username: str) -> None:
@@ -748,7 +808,7 @@ def create_top_5_openings(df: pd.DataFrame, username: str) -> None:
         logger.error(f"Error type: {type(e).__name__}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise
+        raise  # Re-raise to ensure the error is propagated
 
 def create_overall_results(df: pd.DataFrame, username: str) -> None:
     """Create overall results visualization showing detailed breakdown of game results"""
@@ -1124,6 +1184,7 @@ def driver_fn(username: str) -> None:
             (wh_countplot, "white opening analysis"),
             (bl_countplot, "black opening analysis"),
             (most_used_wh, "top 3 first moves"),
+            (most_used_bl, "top 3 black replies"),
             (create_rating_ladder, "rating progress"),
             (create_time_control_dist, "time control distribution"),
             (create_color_results, "color results"),

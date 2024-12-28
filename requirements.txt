@@ -12,3 +12,4 @@ setuptools>=65.5.1
 mord==0.7
 plotly>=5.13.0
 kaleido  # Required for plotly static image export
+cairosvg>=2.7.0  # Required for SVG to PNG conversion
