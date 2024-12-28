@@ -96,14 +96,38 @@ def init_session_state() -> None:
 
 def render_home_tab() -> None:
     """Render the home tab content"""
-    col1, col2, col3 = st.columns([1, 6, 1])
+    # Adjust column ratios for better alignment
+    col1, col2, col3 = st.columns([0.5, 6, 0.5])
+    
+    # Add CSS for vertical alignment
+    st.markdown("""
+        <style>
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding-top: 15px;  /* Adjust this value to align with title */
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
     with col1:
-        st.image("img_files/chess.png", width=50)
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("img_files/logo.ico", width=40)
+        st.markdown('</div>', unsafe_allow_html=True)
     with col2:
-        st.title("Statistical Analysis of a Chess Player using Data Science Pipeline")
+        st.markdown("""
+            <h1 style='text-align: center; color: white; margin: 0;'>
+                Statistical Analysis of a Chess Player using Data Science Pipeline
+            </h1> <br><hr>
+            """, 
+            unsafe_allow_html=True
+        )
     with col3:
-        st.image("img_files/chess.png", width=50)
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("img_files/logo.ico", width=40)
+        st.markdown('</div>', unsafe_allow_html=True)
         
     st.header("Introduction")
     st.write(
@@ -114,11 +138,31 @@ def render_home_tab() -> None:
         "and deriving useful data to help them learn from their previous mistakes."
     )
     
-    col1, col2 = st.columns([3, 1])
+    # Give more space to the images column
+    col1, col2 = st.columns([1.5, 1])
     with col1:
         render_tutorial()
     with col2:
-        st.image("img_files/magnus.png")
+        # Add custom CSS to increase image size
+        st.markdown("""
+            <style>
+            .stImage > img {
+                max-width: 100%;
+                height: auto;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Display Magnus
+        st.image("img_files/magnus.png", use_container_width=True)
+        
+        # Create nested columns with more width
+        st.markdown("<div style='padding: 10px 0px;'></div>", unsafe_allow_html=True)  # Add spacing
+        subcol1, subcol2 = st.columns([1, 1])
+        with subcol1:
+            st.image("img_files/bobby.jpg", use_container_width=True)
+        with subcol2:
+            st.image("img_files/kasparov.png", use_container_width=True)
 
 def render_tutorial() -> None:
     """Render the tutorial section"""
@@ -250,6 +294,7 @@ def render_analysis_content(username: str) -> None:
     """Render the analysis content for a given username"""
     try:
         # Top Openings as White
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Top 20 Most Played Openings as White")
         st.write("This is a frequency countplot chart of the user's top 20 most played openings as white.")
         
@@ -260,6 +305,7 @@ def render_analysis_content(username: str) -> None:
             st.error("White openings analysis visualization not available")
             
         # Top Openings as Black
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Top 20 Most Played Openings as Black")
         st.write("This is a frequency countplot chart of the user's top 20 most played openings as black.")
         
@@ -270,6 +316,7 @@ def render_analysis_content(username: str) -> None:
             st.error("Black openings analysis visualization not available")
         
         # Top First Moves
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Top 3 First Moves as White")
         cols = st.columns([1.2, 1.2, 1.2, 0.1])
         
@@ -296,6 +343,7 @@ def render_analysis_content(username: str) -> None:
                     st.warning(f"Move {i} visualization not available")
         
         # Top Black Replies
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Top 3 Replies as Black")
         cols = st.columns([1.2, 1.2, 1.2, 0.1])
         
@@ -322,8 +370,9 @@ def render_analysis_content(username: str) -> None:
                     st.warning(f"Move {i} visualization not available")
         
         # Add heatmap visualizations
-        st.header("Square Heatmaps")
-        st.write("These heatmaps show the frequency of piece movements on the chess board.")
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.header("Heatmaps of Starting Moves as White and Black")
+        st.write("These are the heatmap of the first moves made as white and black. Darker squares represent higher frequency.")
         
         # White heatmaps
         white_heatmap_path = os.path.join('player_data', username, "heatmap_combined_white.png")
@@ -340,7 +389,10 @@ def render_analysis_content(username: str) -> None:
             st.warning("Black square heatmaps not available")
         
         # Results by Color (side by side)
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Results by Color")
+        st.write("These are the results of the games played by the user.")
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -363,18 +415,20 @@ def render_analysis_content(username: str) -> None:
         
         # Add other visualizations with existence checks
         visualizations = [
-            ("fight.png", "Game Length Analysis", 
-             "This chart shows the number of moves in your last 100 lost games."),
+            ("fight.png", "How much of a fight the user puts up when losing", 
+             "These are all the games where the user lost. More number of moves in the games means the user put up a good fight before resigning. Less number of moves indicate that the player blundered early on in the game."),
             ("time_class.png", "Time Control Distribution", 
              "This pie chart shows the distribution of different time controls in your games."),
             ("rating_ladder_red.png", "Rating Progress", 
-             "This chart shows your rating progression over your last 150 rated games."),
+             "This chart shows your rating progression over your last 150 rated games in different time controls."),
             ("overall_results.png", "Overall Results", 
-             "This bar chart shows the distribution of all your game results."),
-            ("result_top_5_wh.png", "Results for Top 5 Openings as White", 
-             "This chart shows your performance with your 5 most played openings as white."),
-            ("result_top_5_bl.png", "Results for Top 5 Openings as Black", 
-             "This chart shows your performance with your 5 most played openings as black."),
+             "A Frequency plot of the result of all the games, the user has played on the website."),
+            ("overall_results_pie.png", "Overall Results Distribution (Pie Chart)", 
+             "A pie chart showing the distribution of all game results."),
+            ("result_top_5_wh.png", "Opening Strength and Weakness Analysis as White", 
+             "These graphs are very important for Strength / Weakness Analysis. Longer Red bar indicates the opening played by the user the most, but also lost the most. Longest green bar indicates the strongest most played opening."),
+            ("result_top_5_bl.png", "Opening Strength and Weakness Analysis as Black", 
+             "These graphs are very important for Strength / Weakness Analysis. Longer Red bar indicates the opening played by the user the most, but also lost the most. Longest green bar indicates the strongest most played opening."),
             ("corr_heatmap.png", "Correlation Heatmap", 
              "This heatmap shows correlations between different numerical aspects of your games.")
         ]
@@ -382,6 +436,7 @@ def render_analysis_content(username: str) -> None:
         for viz_file, title, description in visualizations:
             viz_path = os.path.join('player_data', username, viz_file)
             if os.path.exists(viz_path):
+                st.markdown("<hr>", unsafe_allow_html=True)  # Add horizontal rule before heading
                 st.header(title)
                 st.write(description)
                 st.image(viz_path)

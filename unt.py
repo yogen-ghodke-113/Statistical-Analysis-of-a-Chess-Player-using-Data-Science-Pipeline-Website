@@ -547,7 +547,7 @@ def create_time_control_dist(df: pd.DataFrame, username: str) -> None:
             time_counts.values, 
             labels=time_counts.index,
             colors=colors[:len(time_counts)],
-            autopct='%1.1f%%',
+            autopct=lambda pct: f'{pct:.1f}%\n({int(pct/100.*sum(time_counts.values))})',
             startangle=90,
             textprops={'fontsize': 12}
         )
@@ -890,6 +890,57 @@ def create_overall_results(df: pd.DataFrame, username: str) -> None:
         logger.error(f"Error in overall results: {str(e)}")
         raise
 
+def create_overall_results_pie(df: pd.DataFrame, username: str) -> None:
+    """Create pie chart of overall game results"""
+    try:
+        logger.info("Creating overall results pie chart...")
+        
+        # Get result counts
+        result_counts = df['result_for_player'].value_counts()
+        
+        # Create figure
+        plt.figure(figsize=(12, 8))
+        
+        # Define colors for each result type
+        colors = plt.cm.Pastel1(np.linspace(0, 1, len(result_counts)))
+        
+        # Create pie chart with clean styling
+        patches, texts, autotexts = plt.pie(
+            result_counts.values, 
+            labels=result_counts.index,
+            colors=colors,
+            autopct=lambda pct: f'{pct:.1f}%\n({int(pct/100.*sum(result_counts.values))})',
+            startangle=90,
+            textprops={'fontsize': 12}
+        )
+        
+        # Add title
+        plt.title('Overall Results Distribution', size=16, pad=20)
+        
+        # Add legend
+        plt.legend(
+            patches,
+            result_counts.index,
+            title="Results",
+            loc="center left",
+            bbox_to_anchor=(1, 0, 0.5, 1)
+        )
+        
+        # Equal aspect ratio ensures circular pie
+        plt.axis('equal')
+        
+        # Save figure with extra space for legend
+        output_path = os.path.join('player_data', username, "overall_results_pie.png")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        logger.info("Overall results pie chart complete")
+        
+    except Exception as e:
+        logger.error(f"Error in overall results pie chart: {str(e)}")
+        raise
+
 def wh_heatmap_beg(df: pd.DataFrame, username: str, vmax: Optional[float] = None) -> float:
     """Create heatmap for starting squares as white"""
     di = {
@@ -1190,6 +1241,7 @@ def driver_fn(username: str) -> None:
             (create_color_results, "color results"),
             (create_top_5_openings, "top 5 openings analysis"),
             (create_overall_results, "overall results"),
+            (create_overall_results_pie, "overall results pie"),
             (wh_heatmap_beg, "starting squares as white"),
             (wh_heatmap_end, "landing squares as white"),
             (bl_heatmap_beg, "starting squares as black"),

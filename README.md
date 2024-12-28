@@ -45,6 +45,10 @@
    ```bash
    streamlit run main.py
    ```
+   The application will automatically open in your default browser. If it doesn't, you can manually access it at:
+   ```
+   http://localhost:8501
+   ```
 
 ### Troubleshooting
 
@@ -67,13 +71,10 @@ Chess is a game with near infinite possibilities and every game played produces 
 ## Objectives
 
 - Finding the player’s Strengths and Weaknesses.
-- Detailed analysis of your opponents moves before the match.
-- Next move Predictions based on previous games played.
 - See the least and most favourite Chess Opening Lines.
 - Find which moves attributed to Wins , Losses or Draws.
 - Visualising the statistics related to the account in great detail.
 - Help the player improve their endgames.
-- Play a Live game and get the analysis of the game in real-time.
 
 ## Navigation
 
@@ -292,7 +293,6 @@ These graphs are very important for Strength / Weakness Analysis. Longer Red bar
 </a>
 
   </p> <br><br>
-
 
 ### Built With
 
