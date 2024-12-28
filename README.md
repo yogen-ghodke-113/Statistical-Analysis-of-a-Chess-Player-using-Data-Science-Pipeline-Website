@@ -40,8 +40,16 @@ sudo apt install python3 python3-pip python3-venv
 
 To create an isolated Python environment, use venv:
 
+#### For Ubuntu/Linux/macOS:
+
 ```bash
 python3 -m venv venv
+```
+
+#### For Windows:
+
+```bash
+python -m venv venv
 ```
 
 ### 3. Activate the Virtual Environment
